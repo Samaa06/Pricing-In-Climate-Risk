@@ -1,0 +1,41 @@
+---
+title: "Simulation 2"
+author: "Jerome Vallar"
+date: "2024-04-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+
+# Define parameters
+n <- 1000      # number of observations per group
+p_control <- 0.4  # probability of success in the control group
+p_treatment <- 0.5  # probability of success in the treatment group
+num_simulations <- 1000  # number of simulations
+
+# Function to run a single simulation
+run_simulation <- function() {
+  control <- rbinom(n, size = 1, prob = p_control)
+  treatment <- rbinom(n, size = 1, prob = p_treatment)
+  test_result <- t.test(control, treatment)
+  return(c(test_result$estimate[1] - test_result$estimate[2], test_result$p.value))
+}
+
+# Run multiple simulations
+results <- replicate(num_simulations, run_simulation())
+
+# Analyze results
+results_df <- as.data.frame(t(results))
+colnames(results_df) <- c("Effect_Size", "P_Value")
+summary_results <- results_df %>% 
+  summarize(
+    Average_Effect_Size = mean(Effect_Size),
+    Proportion_Significant = mean(P_Value < 0.05)
+  )
+
+print(summary_results)
+
+
+```
+

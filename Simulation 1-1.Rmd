@@ -1,0 +1,303 @@
+---
+title: "Simulation 1"
+author: "Samaa Nadkarni"
+date: "2024-04-28"
+output: html_document
+---
+
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(pwr)
+library(data.table)
+#install.packages("DT")
+library(DT)
+
+
+### NO EFFECT ###
+# Set the sample size for each group.
+n <- 5000
+# Set seed to make the result reproducible
+set.seed(617)
+# Create the data table with 5000 repetitions of Treatment, and another 5000 of Control
+df <- data.table(Group = c(rep("Treatment", n), rep("Control", n)))
+
+# Using binomial distribution to set the probability of renewal in the control group as 0.3870, with slightly higher in the treatment group as 0.39
+df[Group == "Control", Renewed_Or_Not := rbinom(n = .N, size = 1, prob = 0.3870)]
+df[Group == "Treatment", Renewed_Or_Not := rbinom(n = .N, size = 1, prob = 0.39)]
+
+# Display the data table using DT if you prefer an interactive table (Uncomment if DT is installed and needed)
+datatable(df)
+
+# Calculate and print the percentage of renewal in each group
+df %>%
+  group_by(Group) %>%
+  summarise(renewal_perc = mean(Renewed_Or_Not)) %>%
+  print()
+
+# Calculate the number of renewals and non-renewals in each group
+table <- table(df$Group, df$Renewed_Or_Not)
+
+# The table has the structure:
+#           0   1
+# Control   x   y
+# Treatment z   w
+
+# Perform the Chi-squared test
+chi_squared_result <- chisq.test(table)
+
+# Print the result
+print(chi_squared_result)
+
+# Separate the data by groups
+control_group <- df[df$Group == "Control", ]$Renewed_Or_Not
+treatment_group <- df[df$Group == "Treatment", ]$Renewed_Or_Not
+
+
+# Setting function
+analyze.experiment <- function(the.dat) {
+  require(data.table)
+  
+  # Ensure the input data is a data.table
+  if (!is.data.table(the.dat)) {
+    setDT(the.dat)
+  }
+  
+  # Check for NA values and remove them if necessary
+  if (any(is.na(the.dat$Renewed_Or_Not))) {
+    the.dat <- na.omit(the.dat)
+  }
+  
+  # 2-sample t-test for means:
+  the.test <- t.test(x = the.dat[Group == "Treatment", Renewed_Or_Not],
+                     y = the.dat[Group == "Control", Renewed_Or_Not],
+                     alternative = "two.sided", var.equal = FALSE) # using Welch's t-test by default
+  
+  # Calculates the effect size
+  treatment_mean <- mean(the.dat[Group == "Treatment", Renewed_Or_Not], na.rm = TRUE)
+  control_mean <- mean(the.dat[Group == "Control", Renewed_Or_Not], na.rm = TRUE)
+  the.effect <- treatment_mean - control_mean
+  
+  # Extracts the upper bound of the 95% confidence interval
+  upper.bound <- the.test$conf.int[2]
+  
+  # P-value
+  p <- the.test$p.value
+  
+  # Combine the result into a data.table
+  result <- data.table(effect_size = the.effect, upper_ci = upper.bound, p_value = p)
+  
+  return(result)
+}
+
+# Assuming "df" is your data.table with 'Group' and 'Renewed_Or_Not' columns
+analyze.experiment(the.dat = df)
+
+#Repeat 1000 times
+B <- 1000
+n <- 5000  # Number of samples per group
+
+set.seed(617)  # For reproducibility
+
+# Function to analyze the experiment
+analyze.experiment <- function(the.dat) {
+  require(data.table)
+  if (!is.data.table(the.dat)) {
+    setDT(the.dat)
+  }
+  
+  if (any(is.na(the.dat$Renewed_Or_Not))) {
+    the.dat <- na.omit(the.dat)
+  }
+  
+  the.test <- t.test(x = the.dat[Group == "Treatment", Renewed_Or_Not],
+                     y = the.dat[Group == "Control", Renewed_Or_Not],
+                     alternative = "two.sided", var.equal = FALSE)
+  
+  treatment_mean <- mean(the.dat[Group == "Treatment", Renewed_Or_Not], na.rm = TRUE)
+  control_mean <- mean(the.dat[Group == "Control", Renewed_Or_Not], na.rm = TRUE)
+  the.effect <- treatment_mean - control_mean
+  upper.bound <- the.test$conf.int[2]
+  p <- the.test$p.value
+  
+  result <- data.table(effect_size = the.effect, upper_ci = upper.bound, p_value = p)
+  return(result)
+}
+all_results <- list()
+# Repeat the experiment B times
+for (i in 1:B) {
+  # Simulate data for this run
+  sim_data <- data.table(Group = rep(c("Treatment", "Control"), each = n),
+                         Renewed_Or_Not = c(rbinom(n, 1, 0.39), rbinom(n, 1, 0.3870)))
+  
+  # Analyze the experiment
+  result <- analyze.experiment(the.dat = sim_data)
+  result[, Experiment := i]  # Tag the result with the experiment number
+  
+  all_results[[i]] <- result  # Store the result
+}
+# Combine all results into one data.table
+final_results <- rbindlist(all_results)
+# Calculate the proportion of experiments where the effect was statistically significant
+significant_proportion <- mean(final_results$p_value < 0.05)
+print(significant_proportion)
+print(final_results)
+
+setDT(final_results)
+# Calculate the fraction of tests where the p-value is less than 0.05
+fraction_significant <- final_results[, mean(p_value < 0.05)]
+print(fraction_significant)
+threshold_effect_size <- 0.02
+#Calculate meaningful p-vaue
+fraction_meaningful_significant <- final_results[, mean(p_value < 0.05 & abs(effect_size) > threshold_effect_size)]
+print(fraction_meaningful_significant)
+
+
+### EXPECTED EFFECT ###
+# Set the sample size for each group.
+n <- 5000
+# Set seed to make the result reproducible
+set.seed(617)
+# Create the data table with 5000 repetitions of Treatment, and another 5000 of Control
+df <- data.table(Group = c(rep("Treatment", n), rep("Control", n)))
+
+# Using binomial distribution to set the probability of renewal in the control group as 0.3870, with higher in the treatment group as 0.70.
+df[Group == "Control", Renewed_Or_Not := rbinom(n = .N, size = 1, prob = 0.3870)]
+df[Group == "Treatment", Renewed_Or_Not := rbinom(n = .N, size = 1, prob = 0.70)]
+
+# Display the data table using DT if you prefer an interactive table (Uncomment if DT is installed and needed)
+datatable(df)
+
+# Calculate and print the percentage of renewal in each group
+df %>%
+  group_by(Group) %>%
+  summarise(renewal_perc = mean(Renewed_Or_Not)) %>%
+  print()
+
+# Calculate the number of renewals and non-renewals in each group
+table <- table(df$Group, df$Renewed_Or_Not)
+
+# The table has the structure:
+#           0   1
+# Control   x   y
+# Treatment z   w
+
+# Perform the Chi-squared test
+chi_squared_result <- chisq.test(table)
+
+# Print the result
+print(chi_squared_result)
+
+# Separate the data by groups
+control_group <- df[df$Group == "Control", ]$Renewed_Or_Not
+treatment_group <- df[df$Group == "Treatment", ]$Renewed_Or_Not
+
+
+# Setting function
+analyze.experiment <- function(the.dat) {
+  require(data.table)
+  
+  # Ensure the input data is a data.table
+  if (!is.data.table(the.dat)) {
+    setDT(the.dat)
+  }
+  
+  # Check for NA values and remove them if necessary
+  if (any(is.na(the.dat$Renewed_Or_Not))) {
+    the.dat <- na.omit(the.dat)
+  }
+  
+  # 2-sample t-test for means:
+  the.test <- t.test(x = the.dat[Group == "Treatment", Renewed_Or_Not],
+                     y = the.dat[Group == "Control", Renewed_Or_Not],
+                     alternative = "two.sided", var.equal = FALSE) # using Welch's t-test by default
+  
+  # Calculates the effect size
+  treatment_mean <- mean(the.dat[Group == "Treatment", Renewed_Or_Not], na.rm = TRUE)
+  control_mean <- mean(the.dat[Group == "Control", Renewed_Or_Not], na.rm = TRUE)
+  the.effect <- treatment_mean - control_mean
+  
+  # Extracts the upper bound of the 95% confidence interval
+  upper.bound <- the.test$conf.int[2]
+  
+  # P-value
+  p <- the.test$p.value
+  
+  # Combine the result into a data.table
+  result <- data.table(effect_size = the.effect, upper_ci = upper.bound, p_value = p)
+  
+  return(result)
+}
+
+# Assuming "df" is your data.table with 'Group' and 'Renewed_Or_Not' columns
+analyze.experiment(the.dat = df)
+
+#Repeat 1000 times
+B <- 1000
+n <- 5000  # Number of samples per group
+
+set.seed(617)  # For reproducibility
+
+# Function to analyze the experiment
+analyze.experiment <- function(the.dat) {
+  require(data.table)
+  if (!is.data.table(the.dat)) {
+    setDT(the.dat)
+  }
+  
+  if (any(is.na(the.dat$Renewed_Or_Not))) {
+    the.dat <- na.omit(the.dat)
+  }
+  
+  the.test <- t.test(x = the.dat[Group == "Treatment", Renewed_Or_Not],
+                     y = the.dat[Group == "Control", Renewed_Or_Not],
+                     alternative = "two.sided", var.equal = FALSE)
+  
+  treatment_mean <- mean(the.dat[Group == "Treatment", Renewed_Or_Not], na.rm = TRUE)
+  control_mean <- mean(the.dat[Group == "Control", Renewed_Or_Not], na.rm = TRUE)
+  the.effect <- treatment_mean - control_mean
+  upper.bound <- the.test$conf.int[2]
+  p <- the.test$p.value
+  
+  result <- data.table(effect_size = the.effect, upper_ci = upper.bound, p_value = p)
+  return(result)
+}
+all_results <- list()
+# Repeat the experiment B times
+for (i in 1:B) {
+  # Simulate data for this run
+  sim_data <- data.table(Group = rep(c("Treatment", "Control"), each = n),
+                         Renewed_Or_Not = c(rbinom(n, 1, 0.70), rbinom(n, 1, 0.3870)))
+  
+  # Analyze the experiment
+  result <- analyze.experiment(the.dat = sim_data)
+  result[, Experiment := i]  # Tag the result with the experiment number
+  
+  all_results[[i]] <- result  # Store the result
+}
+# Combine all results into one data.table
+final_results <- rbindlist(all_results)
+# Calculate the proportion of experiments where the effect was statistically significant
+significant_proportion <- mean(final_results$p_value < 0.05)
+print(significant_proportion)
+print(final_results)
+
+setDT(final_results)
+# Calculate the fraction of tests where the p-value is less than 0.05
+fraction_significant <- final_results[, mean(p_value < 0.05)]
+print(fraction_significant)
+threshold_effect_size <- 0.02
+#Calculate meaningful p-vaue
+fraction_meaningful_significant <- final_results[, mean(p_value < 0.05 & abs(effect_size) > threshold_effect_size)]
+print(fraction_meaningful_significant)
+
+```
+
